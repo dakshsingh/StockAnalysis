@@ -14,9 +14,13 @@ from nselib import capital_market
 from sqlalchemy import create_engine
 import numpy as np
 from twilio.rest import Client
+import os
 
-account_sid = 'ACfa44def54466f51e6e0ca059c917656e'
-auth_token = '4dc66c77d15cb5c998664074d95ce2fc'
+account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+from_number = os.getenv("TWILIO_FROM_NUMBER")
+to_number = os.getenv("TWILIO_TO_NUMBER")
+
 client = Client(account_sid, auth_token)
 
 # Creating the SQL connection to free neon.tech database
@@ -65,8 +69,8 @@ else:
 
 message = client.messages.create(
     body = whatsapp_message,
-    from_='whatsapp:+14155238886',       # Twilio Sandbox Number
-    to='whatsapp:+6596468334'            # YOUR Verified WhatsApp Number
+    from_=from_number,       # Twilio Sandbox Number
+    to=to_number            # YOUR Verified WhatsApp Number
 )
 
 print(message.sid)
