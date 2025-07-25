@@ -7,7 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1jlzTWmdeX7wjIIjS9lwsTzygfKryqKYF
 """
 
-!pip install pandas nselib pandas_market_calendars sqlalchemy psycopg2-binary twilio
 from datetime import date, timedelta
 import pandas as pd
 import nselib
