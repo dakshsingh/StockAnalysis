@@ -15,13 +15,14 @@ from sqlalchemy import create_engine
 import numpy as np
 from twilio.rest import Client
 import os
+import requests
 
-account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-from_number = os.getenv("TWILIO_FROM_NUMBER")
-to_number = os.getenv("TWILIO_TO_NUMBER")
+#account_sid = os.getenv("TWILIO_ACCOUNT_SID")
+#auth_token = os.getenv("TWILIO_AUTH_TOKEN")
+#from_number = os.getenv("TWILIO_FROM_NUMBER")
+#to_number = os.getenv("TWILIO_TO_NUMBER")
 
-client = Client(account_sid, auth_token)
+#client = Client(account_sid, auth_token)
 
 # Creating the SQL connection to free neon.tech database
 connection_string = 'postgresql://neondb_owner:npg_iGAC2k4pRYEZ@ep-wandering-king-a10gzxx7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
@@ -67,13 +68,22 @@ if not df_to_insert.empty:
 else:
   whatsapp_message = 'NSE bhav copy — all entries already exist.'
 
-message = client.messages.create(
-    body = whatsapp_message,
-    from_=from_number,       # Twilio Sandbox Number
-    to=to_number            # YOUR Verified WhatsApp Number
-)
+#message = client.messages.create(
+#    body = whatsapp_message,
+#    from_=from_number,       # Twilio Sandbox Number
+#    to=to_number            # YOUR Verified WhatsApp Number
+#)
 
-print(message.sid)
+#print(message.sid)
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = '5798902540'
 
+url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+payload = {
+    'chat_id': CHAT_ID,
+    'text': whatsapp_message
+}
 
+response = requests.post(url, data=payload)
+print(response.json())
