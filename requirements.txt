@@ -4,3 +4,7 @@ pandas_market_calendars
 sqlalchemy
 psycopg2-binary
 twilio
+growwapi 
+pyotp 
+duckdb 
+motherduck

@@ -7,26 +7,25 @@ Original file is located at
     https://colab.research.google.com/drive/1jlzTWmdeX7wjIIjS9lwsTzygfKryqKYF
 """
 
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 import pandas as pd
 import nselib
 from nselib import capital_market
 from sqlalchemy import create_engine
 import numpy as np
-from twilio.rest import Client
 import os
 import requests
-
-#account_sid = os.getenv("TWILIO_ACCOUNT_SID")
-#auth_token = os.getenv("TWILIO_AUTH_TOKEN")
-#from_number = os.getenv("TWILIO_FROM_NUMBER")
-#to_number = os.getenv("TWILIO_TO_NUMBER")
-
-#client = Client(account_sid, auth_token)
+from growwapi import GrowwAPI
+import pyotp
+import json
+import duckdb
 
 # Creating the SQL connection to free neon.tech database
 connection_string = 'postgresql://neondb_owner:npg_iGAC2k4pRYEZ@ep-wandering-king-a10gzxx7-pooler.ap-southeast-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require'
 engine = create_engine(connection_string)
+
+motherduck_token = os.getenv("MOTHERDUCK_TOKEN")
+con = duckdb.connect(f"md:?motherduck_token={motherduck_token}")
 
 today = date.today()
 trading_date = today- timedelta(days=1)
@@ -64,17 +63,10 @@ df_to_insert = merged[merged['_merge'] == 'left_only'].drop(columns=['_merge'])
 # STEP 3: Insert only new rows
 if not df_to_insert.empty:
   df_to_insert.to_sql('daily_nse_price', con=engine, if_exists='append', index=False)
+  con.register("df_to_insert", df_to_insert).execute("INSERT INTO daily_nse_price SELECT * FROM df_to_insert")
   whatsapp_message  = f"NSE bhav copy inserted {len(df_to_insert)} new rows."
 else:
   whatsapp_message = 'NSE bhav copy — all entries already exist.'
-
-#message = client.messages.create(
-#    body = whatsapp_message,
-#    from_=from_number,       # Twilio Sandbox Number
-#    to=to_number            # YOUR Verified WhatsApp Number
-#)
-
-#print(message.sid)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = '5798902540'
