@@ -29,7 +29,6 @@ try:
   new_data = capital_market.bhav_copy_with_delivery(trade_date=date_str)
 except FileNotFoundError:
   whatsapp_message = f'No Bhav copy for {date_str}'
-new_data=capital_market.bhav_copy_with_delivery(trade_date=date_str)
 new_data.columns = [col.lower() for col in new_data.columns]
 new_data['date1']=pd.to_datetime(new_data['date1'],format='%d-%b-%Y')
 
