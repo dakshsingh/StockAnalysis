@@ -20,6 +20,9 @@ engine = create_engine(connection_string)
 motherduck_token = os.getenv("MOTHERDUCK_TOKEN")
 con = duckdb.connect(f"md:?motherduck_token={motherduck_token}")
 
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = '5798902540'
+
 today = date.today()
 trading_date = today- timedelta(days=1)
 check_table_date = today- timedelta(days=7)
@@ -29,6 +32,13 @@ try:
   new_data = capital_market.bhav_copy_with_delivery(trade_date=date_str)
 except FileNotFoundError:
   whatsapp_message = f'No Bhav copy for {date_str}'
+  url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+  payload = {
+    'chat_id': CHAT_ID,
+    'text': whatsapp_message
+  }
+  sys.exit()  # Program stops here
+
 new_data.columns = [col.lower() for col in new_data.columns]
 new_data['date1']=pd.to_datetime(new_data['date1'],format='%d-%b-%Y')
 
@@ -63,9 +73,6 @@ if not df_to_insert.empty:
   whatsapp_message  = f"NSE bhav copy inserted {len(df_to_insert)} new rows for {date_str}."
 else:
   whatsapp_message = f"NSE bhav copy — all entries for {date_str} already exist."
-
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = '5798902540'
 
 url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 payload = {
