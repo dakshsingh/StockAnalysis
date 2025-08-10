@@ -27,3 +27,4 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           MOTHERDUCK_TOKEN: ${{ secrets.MOTHERDUCK_TOKEN }}
+          NEON_TECH_CONNECTION: ${{ secrets.NEON_TECH_CONNECTION }}
