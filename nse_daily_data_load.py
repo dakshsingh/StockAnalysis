@@ -37,7 +37,7 @@ except FileNotFoundError:
     'chat_id': CHAT_ID,
     'text': whatsapp_message
   }
-  sys.exit()  # Program stops here
+  exit(1)  # Program stops here
 
 new_data.columns = [col.lower() for col in new_data.columns]
 new_data['date1']=pd.to_datetime(new_data['date1'],format='%d-%b-%Y')
