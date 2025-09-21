@@ -2,7 +2,7 @@ name: Daily Task
 
 on:
   schedule:
-    - cron: '30 3 * * *'  # Run daily at 9:00 AM IST
+    - cron: '30 3 * * 1-6'  # Run daily at 9:00 AM IST
   workflow_dispatch:
 
 jobs:
