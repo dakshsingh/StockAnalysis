@@ -82,3 +82,31 @@ payload = {
 
 response = requests.post(url, data=payload)
 print(response.json())
+
+df = con.sql("SELECT symbol as 'Ticker', date1 as 'Date', open_price as 'Open', high_price as 'High',low_price as 'Low',close_price as 'Close', deliv_qty as 'Volume' FROM daily_nse_price where series = 'EQ'").df()
+df["Volume"] = df["Volume"].astype(float)
+
+price_threshold = 0.03
+volume_threshold = 2.0
+
+latest_date = df["Date"].max()
+results = []
+
+for ticker, group in df.groupby("Ticker"):
+    group = group.sort_values("Date").reset_index(drop=True)
+
+    # Calculate daily % price change (Close vs Previous Close)
+    group["Pct_Change"] = group["Close"].pct_change()
+
+    # Calculate rolling average volume (last 20 days)
+    group["Avg_Volume"] = group["Volume"].rolling(window=20, min_periods=5).mean()
+
+    # Signal: price up > threshold & volume > threshold * avg_volume
+    group["Signal"] = (group["Pct_Change"] > price_threshold) & (group["Volume"] > volume_threshold * group["Avg_Volume"])
+
+    results.append(group)
+
+result_df = pd.concat(results)
+
+signals = result_df[result_df["Signal"]]
+latest_signals = signals[signals["Date"] == latest_date]
