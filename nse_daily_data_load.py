@@ -110,3 +110,27 @@ result_df = pd.concat(results)
 
 signals = result_df[result_df["Signal"]]
 latest_signals = signals[signals["Date"] == latest_date]
+
+allstocks= pd.read_excel("data/allstocks.xlsx")
+
+latest_signals = pd.merge(
+    latest_signals,
+    allstocks,
+    left_on="Ticker",         # column name in latest_signals
+    right_on="NSE Code",     # column name in allstocks
+    how="left"           # inner join (only matching tickers)
+)
+
+filtered = latest_signals[
+    (latest_signals["Market Capitalization"] > 1000) &
+    (latest_signals["PEG TTM PE to Growth"] > 0) &
+    (latest_signals["PEG TTM PE to Growth"] < 2) &
+    (latest_signals["ROCE Annual 3Yr Avg %"] > 15) &
+    (latest_signals['Long Term Debt To Equity Annual'] < 0.5) &
+    (latest_signals['Promoter holding latest %'] > 60) &
+    (latest_signals['Promoter holding pledge percentage % Qtr'] < 0.01) &
+    (latest_signals['Net Profit Qtr Growth YoY %'] > 0) &
+    (latest_signals['Operating Revenue growth TTM %'] > 15) &
+    (latest_signals['Cash EPS 5Yr Growth %'] > 15) &
+    (latest_signals['EPS TTM Growth %'] > 15)
+]
