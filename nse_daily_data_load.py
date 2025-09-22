@@ -134,3 +134,32 @@ filtered = latest_signals[
     (latest_signals['Cash EPS 5Yr Growth %'] > 15) &
     (latest_signals['EPS TTM Growth %'] > 15)
 ]
+
+def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
+    import matplotlib.pyplot as plt
+    import requests
+    
+    # Render DataFrame as image
+    fig, ax = plt.subplots(figsize=(6, 0.5 + 0.3*len(df)))  # auto height
+    ax.axis("off")
+    table = ax.table(
+        cellText=df.values,
+        colLabels=df.columns,
+        cellLoc="center",
+        loc="center"
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1.2, 1.2)
+    
+    filename = "table.png"
+    plt.savefig(filename, bbox_inches="tight")
+    plt.close()
+    
+    # Send to Telegram
+    url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+    with open(filename, "rb") as f:
+        res = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": f})
+    return res.json()
+
+send_dataframe_via_telegram(filtered[["Stock Name"]], BOT_TOKEN, CHAT_ID, "Buy")
