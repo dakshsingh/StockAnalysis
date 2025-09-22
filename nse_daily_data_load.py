@@ -24,7 +24,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = '5798902540'
 
 today = date.today()
-trading_date = today- timedelta(days=1)
+trading_date = today # - timedelta(days=1)
 check_table_date = today- timedelta(days=7)
 date_str = trading_date.strftime('%d-%m-%Y')
 
