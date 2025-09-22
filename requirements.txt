@@ -3,7 +3,7 @@ nselib
 pandas_market_calendars
 sqlalchemy
 psycopg2-binary
-twilio
+openpyxl
 growwapi 
 pyotp 
 duckdb==1.3.2 
