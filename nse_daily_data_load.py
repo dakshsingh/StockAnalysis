@@ -117,14 +117,14 @@ def weekly_supertrend_daily(df, atr_period=10, multiplier=3):
         weekly['Basic_Down'] = (weekly['High'] + weekly['Low'])/2 - multiplier*weekly['ATR']
 
         # Weekly SuperTrend
-        weekly['SuperTrend'] = 0
+        weekly['SuperTrend'] = 0.0
         for i in range(1,len(weekly)):
             prev = weekly.iloc[i-1]
             if prev['SuperTrend'] < prev['Close']:
                 curr_st = max(weekly.iloc[i]['Basic_Down'], prev['SuperTrend'])
             else:
                 curr_st = min(weekly.iloc[i]['Basic_Up'], prev['SuperTrend'])
-            weekly.iloc[i, weekly.columns.get_loc('SuperTrend')] = curr_st
+            weekly.at[weekly.index[i], 'SuperTrend'] = curr_st
 
         # ---- 2. Map weekly SuperTrend to daily data ----
         group = group.set_index('Date')
@@ -169,12 +169,22 @@ latest_signals = signals[signals["Date"] == latest_date]
 
 allstocks= pd.read_excel("data/allstocks.xlsx")
 
+NSE_ISIN = pd.read_csv("data/NSE_ISIN.csv")
+NSE_ISIN.columns = NSE_ISIN.columns.str.strip()
+
+latest_signals = latest_signals.merge(
+    NSE_ISIN[["SYMBOL","ISIN NUMBER"]],
+    left_on="Ticker",
+    right_on="SYMBOL",
+    how="inner"
+)
+
 latest_signals = pd.merge(
     latest_signals,
     allstocks,
-    left_on="Ticker",         # column name in latest_signals
-    right_on="NSE Code",     # column name in allstocks
-    how="left"           # inner join (only matching tickers)
+    left_on="ISIN NUMBER",         
+    right_on="ISIN",     
+    how="left"           
 )
 
 latest_signals = latest_signals.merge(
