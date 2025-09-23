@@ -16,6 +16,5 @@ RUN apt-get update && apt-get install -y \
     && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
 # Install Python dependencies from requirements.txt (assumes file in repo root)
-COPY requirements.txt .
 RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
