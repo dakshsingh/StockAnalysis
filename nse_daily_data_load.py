@@ -83,8 +83,62 @@ payload = {
 response = requests.post(url, data=payload)
 print(response.json())
 
-df = con.sql("SELECT symbol as 'Ticker', date1 as 'Date', open_price as 'Open', high_price as 'High',low_price as 'Low',close_price as 'Close', deliv_qty as 'Volume' FROM daily_nse_price where series = 'EQ'").df()
+df = con.sql("SELECT symbol as 'Ticker', date1 as 'Date', open_price as 'Open', high_price as 'High',low_price as 'Low',close_price as 'Close', deliv_qty as 'Volume' FROM daily_nse_price where series = 'EQ' and date1 > '2025-01-01'").df()
 df["Volume"] = df["Volume"].astype(float)
+
+def weekly_supertrend_daily(df, atr_period=10, multiplier=3):
+    """
+    df: DataFrame with ['Ticker','Date','Open','High','Low','Close']
+    Returns df with 'SuperTrend' and 'Trend' columns applied to daily rows, based on weekly ATR
+    """
+    df = df.copy()
+    df['Date'] = pd.to_datetime(df['Date'])
+    df = df.sort_values(['Ticker','Date'])
+
+    result_list = []
+
+    for ticker, group in df.groupby('Ticker'):
+        # Resample weekly to get High, Low, Close for SuperTrend calculation
+        weekly = group.resample('W-FRI', on='Date').agg({
+            'High':'max',
+            'Low':'min',
+            'Close':'last'
+        }).sort_index()
+
+        # Calculate weekly ATR
+        weekly['H-L'] = weekly['High'] - weekly['Low']
+        weekly['H-Cp'] = abs(weekly['High'] - weekly['Close'].shift())
+        weekly['L-Cp'] = abs(weekly['Low'] - weekly['Close'].shift())
+        weekly['TR'] = weekly[['H-L','H-Cp','L-Cp']].max(axis=1)
+        weekly['ATR'] = weekly['TR'].rolling(atr_period, min_periods=1).mean()
+
+        # Basic bands
+        weekly['Basic_Up'] = (weekly['High'] + weekly['Low'])/2 + multiplier*weekly['ATR']
+        weekly['Basic_Down'] = (weekly['High'] + weekly['Low'])/2 - multiplier*weekly['ATR']
+
+        # Weekly SuperTrend
+        weekly['SuperTrend'] = 0
+        for i in range(1,len(weekly)):
+            prev = weekly.iloc[i-1]
+            if prev['SuperTrend'] < prev['Close']:
+                curr_st = max(weekly.iloc[i]['Basic_Down'], prev['SuperTrend'])
+            else:
+                curr_st = min(weekly.iloc[i]['Basic_Up'], prev['SuperTrend'])
+            weekly.iloc[i, weekly.columns.get_loc('SuperTrend')] = curr_st
+
+        # ---- 2. Map weekly SuperTrend to daily data ----
+        group = group.set_index('Date')
+        group['SuperTrend'] = weekly['SuperTrend'].reindex(group.index, method='ffill')
+
+        # ---- 3. Daily Trend based on daily Close vs weekly SuperTrend ----
+        group['Trend'] = group['Close'] > group['SuperTrend']
+
+        group['Ticker'] = ticker
+        result_list.append(group.reset_index())
+
+    return pd.concat(result_list, ignore_index=True)
+
+daily_with_weekly_st = weekly_supertrend_daily(df, atr_period=10, multiplier=2)
 
 price_threshold = 0.03
 volume_threshold = 2.0
@@ -118,6 +172,12 @@ latest_signals = pd.merge(
     allstocks,
     left_on="Ticker",         # column name in latest_signals
     right_on="NSE Code",     # column name in allstocks
+    how="left"           # inner join (only matching tickers)
+)
+
+latest_signals = latest_signals.merge(
+    latest_supertrend[["Ticker","SuperTrend","Trend"]],
+    on="Ticker",         # column name in latest_signals
     how="left"           # inner join (only matching tickers)
 )
 
@@ -162,4 +222,4 @@ def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
         res = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": f})
     return res.json()
 
-send_dataframe_via_telegram(filtered[["Stock Name"]], BOT_TOKEN, CHAT_ID, "Buy")
+send_dataframe_via_telegram(filtered[["Stock Name","Trend"]], BOT_TOKEN, CHAT_ID, "Buy")
