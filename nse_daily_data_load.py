@@ -140,6 +140,8 @@ def weekly_supertrend_daily(df, atr_period=10, multiplier=3):
 
 daily_with_weekly_st = weekly_supertrend_daily(df, atr_period=10, multiplier=2)
 
+latest_supertrend = daily_with_weekly_st.groupby("Ticker").tail(1)
+
 price_threshold = 0.03
 volume_threshold = 2.0
 
