@@ -15,6 +15,3 @@ RUN apt-get update && apt-get install -y \
     && cd ta-lib && ./configure --prefix=/usr && make && make install && cd .. \
     && rm -rf ta-lib ta-lib-0.4.0-src.tar.gz
 
-# Install Python dependencies from requirements.txt (assumes file in repo root)
-RUN pip install --upgrade pip
-RUN pip install -r requirements.txt
