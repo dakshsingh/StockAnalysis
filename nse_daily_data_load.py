@@ -211,6 +211,12 @@ def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
     import matplotlib.pyplot as plt
     import requests
     
+    if df.empty:
+        telegram = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data={"chat_id": chat_id, "text": f"Nothing in {caption} list today."}
+        )
+        return telegram.json()
     # Render DataFrame as image
     fig, ax = plt.subplots(figsize=(6, 0.5 + 0.3*len(df)))  # auto height
     ax.axis("off")
