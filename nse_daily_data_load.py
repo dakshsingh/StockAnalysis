@@ -13,7 +13,7 @@ import pyotp
 import json
 import duckdb
 
-# Creating the SQL connection to free neon.tech database
+## Get environment variables and setup connections
 connection_string = os.getenv("NEON_TECH_CONNECTION")
 engine = create_engine(connection_string)
 
@@ -22,6 +22,24 @@ con = duckdb.connect(f"md:?motherduck_token={motherduck_token}")
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = '5798902540'
+
+groww_api_key = os.getenv('GROWW_API_KEY')
+groww_api_secret = os.getenv('GROWW_API_SECRET')
+totp_gen = pyotp.TOTP(groww_api_secret)
+totp = totp_gen.now()
+
+access_token = GrowwAPI.get_access_token(groww_api_key, totp)
+groww = GrowwAPI(access_token)
+
+## Get all instruments and filter for NSE priority unique on trading_symbol
+
+instruments_df = groww.get_all_instruments()
+
+instruments_priority = instruments_df.copy()
+instruments_priority['priority'] = instruments_priority['exchange'].apply(lambda x: 1 if x=='NSE' else 2)
+instruments_unique = instruments_priority.sort_values(['trading_symbol','priority']).drop_duplicates('trading_symbol', keep='first')
+
+## Load NSE Bhav copy data for the latest trading day
 
 today = date.today()
 trading_date = today # - timedelta(days=1)
@@ -83,6 +101,7 @@ payload = {
 response = requests.post(url, data=payload)
 print(response.json())
 
+## Calculate weekly SuperTrend on daily data 
 df = con.sql("SELECT symbol as 'Ticker', date1 as 'Date', open_price as 'Open', high_price as 'High',low_price as 'Low',close_price as 'Close', deliv_qty as 'Volume' FROM daily_nse_price where series = 'EQ' and date1 > '2025-01-01'").df()
 df["Volume"] = df["Volume"].astype(float)
 
@@ -142,6 +161,11 @@ daily_with_weekly_st = weekly_supertrend_daily(df, atr_period=10, multiplier=2)
 
 latest_supertrend = daily_with_weekly_st.groupby("Ticker").tail(1)
 
+con.register("latest_supertrend", latest_supertrend).execute("create or replace table latest_supertrend as select * from latest_supertrend")
+
+## Build buy list based on price and volume action
+# Criteria: Price up > 3% and Volume > 2x average volume (20 days)  
+
 price_threshold = 0.03
 volume_threshold = 2.0
 
@@ -169,13 +193,10 @@ latest_signals = signals[signals["Date"] == latest_date]
 
 allstocks= pd.read_excel("data/allstocks.xlsx")
 
-NSE_ISIN = pd.read_csv("data/NSE_ISIN.csv")
-NSE_ISIN.columns = NSE_ISIN.columns.str.strip()
-
 latest_signals = latest_signals.merge(
-    NSE_ISIN[["SYMBOL","ISIN NUMBER"]],
+    instruments_unique[["trading_symbol","isin"]],
     left_on="Ticker",
-    right_on="SYMBOL",
+    right_on="trading_symbol",
     how="inner"
 )
 
@@ -241,3 +262,101 @@ def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
     return res.json()
 
 send_dataframe_via_telegram(filtered[["Stock Name","Trend"]], BOT_TOKEN, CHAT_ID, "Buy")
+
+## Build sell list
+
+# Step 1: Get holdings from Groww
+holdings_response = groww.get_holdings_for_user(timeout=5)
+
+holdings = pd.DataFrame(holdings_response["holdings"])
+holdings = holdings[["isin", "trading_symbol", "quantity", "average_price"]]
+
+instruments_priority = instruments_df.copy()
+instruments_priority['priority'] = instruments_priority['exchange'].apply(lambda x: 1 if x=='NSE' else 2)
+instruments_unique = instruments_priority.sort_values(['trading_symbol','priority']).drop_duplicates('trading_symbol', keep='first')
+
+holdings = holdings.merge(
+    instruments_unique[['isin', 'exchange']],
+    on='isin',
+    how='left'
+)
+
+# Columns from get_quote you want to add
+quote_cols = [
+    "bid_quantity", "bid_price", "day_change", "day_change_perc",
+    "upper_circuit_limit", "lower_circuit_limit", "last_price", "high_trade_range",
+    "low_trade_range", "volume", "week_52_high", "week_52_low", "market_cap"
+]
+
+# Initialize empty dict to store quote data
+quotes_data = {col: [] for col in quote_cols}
+
+# Loop through holdings
+for idx, row in holdings.iterrows():
+    try:
+        quote_response = groww.get_quote(
+            exchange=row["exchange"],  # NSE or BSE
+            segment=groww.SEGMENT_CASH,
+            trading_symbol=row["trading_symbol"]
+        )
+        
+        # Add data to quotes_data dict
+        for col in quote_cols:
+            # Handle nested OHLC if needed
+            if col in quote_response:
+                quotes_data[col].append(quote_response[col])
+            else:
+                quotes_data[col].append(None)
+        
+        # Optional: small delay to avoid API limits
+        time.sleep(0.1)
+
+    except Exception as e:
+        print(f"Error fetching {row['trading_symbol']}: {e}")
+        for col in quote_cols:
+            quotes_data[col].append(None)
+
+# Convert quotes_data to DataFrame
+quotes_df = pd.DataFrame(quotes_data)
+
+# Concatenate with holdings
+holdings = pd.concat([holdings.reset_index(drop=True), quotes_df], axis=1)
+
+holdings["ltp"] = holdings["last_price"]  # use last_price as LTP
+holdings["current_value"] = holdings["quantity"] * holdings["ltp"]
+holdings["pnl_percent"] = (holdings["ltp"] - holdings["average_price"]) / holdings["average_price"] * 100
+holdings["day_gain"] = holdings["quantity"] * holdings["day_change"]
+
+holdings = pd.merge(
+    holdings,
+    allstocks,
+    left_on="isin",         # column name in latest_signals
+    right_on="ISIN",     # column name in allstocks
+    how="left"           # inner join (only matching tickers)
+)
+
+holdings = pd.merge(
+    holdings,
+    latest_supertrend[["Ticker","SuperTrend","Trend"]],
+    left_on="trading_symbol",         # column name in latest_signals
+    right_on="Ticker",         
+    how="left"           # inner join (only matching tickers)
+)
+
+# Restrict "Stock Name" to first 2 words
+holdings["Stock Name"] = holdings["Stock Name"].str.split().str[:2].str.join(" ")
+# Further restrict to first word if length > 20
+holdings["Stock Name"] = holdings["Stock Name"].apply(lambda x: x.split()[0] if len(x) > 15 else x)
+
+# Select specific columns and filter rows where Trend is False
+sell_list = holdings.loc[
+    holdings["Trend"] == False,
+    ["Stock Name", "current_value", "day_change_perc", "pnl_percent"]
+]
+
+# Format numeric columns
+sell_list["current_value"] = sell_list["current_value"].astype(int)
+sell_list["day_change_perc"] = sell_list["day_change_perc"].round(2)
+sell_list["pnl_percent"] = sell_list["pnl_percent"].round(2)
+
+send_dataframe_via_telegram(sell_list, BOT_TOKEN, CHAT_ID, "Sell")
