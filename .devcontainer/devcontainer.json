@@ -1,7 +1,7 @@
 {
   "name": "vectorbtpro-env",
   "build": {
-    "dockerfile": "Dockerfile",
+    "dockerfile": "vectorbtpro-2025.7.27/Dockerfile.dev",
     "context": ".."
   },
   "remoteUser": "devuser",
