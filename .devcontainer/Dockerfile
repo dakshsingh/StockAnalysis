@@ -18,7 +18,6 @@ RUN wget https://github.com/ta-lib/ta-lib/releases/download/v0.6.4/ta-lib-0.6.4-
 RUN rm -R ta-lib-0.6.4 ta-lib-0.6.4-src.tar.gz
 
 COPY ./vectorbtpro ./vectorbtpro
-COPY pyproject.toml LICENSE README.md ./
 RUN uv pip install --no-cache-dir ".[all]"
 RUN uv pip install --no-cache-dir --no-deps "universal-portfolios"
 
