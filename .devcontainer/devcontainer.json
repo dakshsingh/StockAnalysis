@@ -3,7 +3,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
-  "remoteUser": "vscode",
+  "remoteUser": "devuser",
   "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
