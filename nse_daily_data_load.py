@@ -203,7 +203,7 @@ latest_signals = latest_signals.merge(
 latest_signals = pd.merge(
     latest_signals,
     allstocks,
-    left_on="ISIN NUMBER",         
+    left_on="isin",         
     right_on="ISIN",     
     how="left"           
 )
