@@ -1,4 +1,5 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# Base image: Python with dev tools
+FROM mcr.microsoft.com/devcontainers/python:3.12
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends build-essential cmake git wget sudo vim && \
