@@ -1,10 +1,9 @@
 {
   "name": "vectorbtpro-env",
   "build": {
-    "dockerfile": "Dockerfile",
-    "context": ".."
+    "dockerfile": "Dockerfile"
   },
-  "remoteUser": "devuser",
+  "remoteUser": "vscode",
   "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
