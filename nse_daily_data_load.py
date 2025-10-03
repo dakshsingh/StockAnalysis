@@ -263,7 +263,7 @@ def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
         res = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": f})
     return res.json()
 
-send_dataframe_via_telegram(filtered[["Stock Name","Trend"]], BOT_TOKEN, CHAT_ID, "Buy")
+send_dataframe_via_telegram(filtered[["Stock Name","Ticker"]], BOT_TOKEN, CHAT_ID, "Buy")
 
 ## Build sell list
 
@@ -272,6 +272,8 @@ holdings_response = groww.get_holdings_for_user(timeout=5)
 
 holdings = pd.DataFrame(holdings_response["holdings"])
 holdings = holdings[["isin", "trading_symbol", "quantity", "average_price"]]
+
+con.register("holdings", holdings).execute("create or replace table holdings as select * from holdings")
 
 instruments_priority = instruments_df.copy()
 instruments_priority['priority'] = instruments_priority['exchange'].apply(lambda x: 1 if x=='NSE' else 2)
@@ -377,3 +379,53 @@ holdings_list["day_change_perc"] = holdings_list["day_change_perc"].round(2)
 holdings_list["pnl_percent"] = holdings_list["pnl_percent"].round(2)
 
 send_dataframe_via_telegram(holdings_list, BOT_TOKEN, CHAT_ID, "Holdings")
+
+# Total portfolio value and gains
+total_value = holdings["current_value"].sum()
+total_day_change = holdings["day_gain"].sum()
+total_gain = holdings["overall_gain"].sum()
+
+# Percentage changes
+percentage_day_change = (total_day_change / (total_value - total_day_change)) * 100
+percentage_overall_change = (total_gain / (total_value - total_gain)) * 100
+
+# Fetch index quotes
+indices = {
+    "NIFTY": "NIFTY",
+    "NIFTYMIDCAP": "NIFTYMIDCAP",
+    "SMALLCAP250": "MOSMALL250",
+    "NIFTY500": "MONIFTY500"
+}
+
+index_changes = {}
+
+for name, symbol in indices.items():
+    quote = groww.get_quote(
+        exchange=groww.EXCHANGE_NSE,
+        segment=groww.SEGMENT_CASH,
+        trading_symbol=symbol
+    )
+    day_change_perc = quote.get("day_change_perc", 0)  # already in %
+    index_changes[name] = day_change_perc
+
+# Integrate into Telegram message
+message = (
+    f"📊 *Portfolio Summary*\n"
+    f"💰 Total Value: ₹{total_value:,.2f}\n"
+    f"📈 Day Change: ₹{int(total_day_change):+,} ({percentage_day_change:+.2f}%)\n"
+    f"🏦 Overall Gain: ₹{int(total_gain):+,} ({percentage_overall_change:+.2f}%)\n\n"
+    f"📌 *Index Performance*\n"
+    f"▪️ NIFTY: {index_changes['NIFTY']:+.2f}%\n"
+    f"▪️ NIFTY MIDCAP: {index_changes['NIFTYMIDCAP']:+.2f}%\n"
+    f"▪️ NIFTY SMALLCAP 250: {index_changes['SMALLCAP250']:+.2f}%\n"
+    f"▪️ NIFTY 500: {index_changes['NIFTY500']:+.2f}%"
+)
+
+url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
+payload = {
+    'chat_id': CHAT_ID,
+    'text': message
+}
+
+response = requests.post(url, data=payload)
+print(response.json())
