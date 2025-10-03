@@ -429,3 +429,30 @@ payload = {
 
 response = requests.post(url, data=payload)
 print(response.json())
+
+## Add daily orders to order records
+
+order_list_response = groww.get_order_list( # get order list of both CASH and FNO segments.
+    page = 0, # Optional: Page number for paginated results
+    page_size = 100 # Optional: Number of orders to fetch per page (default is 100)
+)
+
+order_list = pd.DataFrame(order_list_response["order_list"])
+order_list["value"] = (order_list["filled_quantity"] * order_list["average_fill_price"]).astype(float)
+
+order_list = order_list.merge(
+    instruments_unique[["trading_symbol","name"]],
+    left_on="trading_symbol",
+    right_on="trading_symbol",
+    how="inner"
+)
+
+order_list = order_list.merge(
+    holdings[["isin","average_price"]],
+    left_on="isin",
+    right_on="isin",
+    how="left"
+)
+
+orders_for_insert = order_list[["name","trading_symbol", "isin", "transaction_type", "filled_quantity", "value", "exchange",  "groww_order_id","exchange_time","order_status", "average_price" ]]
+con.register("orders_for_insert", orders_for_insert).execute("INSERT INTO groww_orders SELECT * FROM orders_for_insert")
