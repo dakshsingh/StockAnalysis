@@ -328,6 +328,7 @@ holdings["ltp"] = holdings["last_price"]  # use last_price as LTP
 holdings["current_value"] = holdings["quantity"] * holdings["ltp"]
 holdings["pnl_percent"] = (holdings["ltp"] - holdings["average_price"]) / holdings["average_price"] * 100
 holdings["day_gain"] = holdings["quantity"] * holdings["day_change"]
+holdings["overall_gain"] = holdings["quantity"] * (holdings["ltp"] - holdings["average_price"])
 
 holdings = pd.merge(
     holdings,
@@ -362,3 +363,17 @@ sell_list["day_change_perc"] = sell_list["day_change_perc"].round(2)
 sell_list["pnl_percent"] = sell_list["pnl_percent"].round(2)
 
 send_dataframe_via_telegram(sell_list, BOT_TOKEN, CHAT_ID, "Sell")
+
+# Set up list to send to telegram for the full list of holdings
+holdings_list = holdings[
+    ["Stock Name", "current_value", "overall_gain", "day_gain", "day_change_perc", "pnl_percent"]
+].sort_values(by="Stock Name")
+
+# Format numeric columns
+holdings_list["current_value"] = holdings_list["current_value"].astype(int)
+holdings_list["day_gain"] = holdings_list["day_gain"].astype(int)
+holdings_list["overall_gain"] = holdings_list["overall_gain"].astype(int)
+holdings_list["day_change_perc"] = holdings_list["day_change_perc"].round(2)
+holdings_list["pnl_percent"] = holdings_list["pnl_percent"].round(2)
+
+send_dataframe_via_telegram(holdings_list, BOT_TOKEN, CHAT_ID, "Holdings")
