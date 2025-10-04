@@ -265,7 +265,34 @@ def send_dataframe_via_telegram(df, bot_token, chat_id, caption="DataFrame"):
 
 send_dataframe_via_telegram(filtered[["Stock Name","Ticker"]], BOT_TOKEN, CHAT_ID, "Buy")
 
-## Build sell list
+## Add daily orders to order records
+
+order_list_response = groww.get_order_list( # get order list of both CASH and FNO segments.
+    page = 0, # Optional: Page number for paginated results
+    page_size = 100 # Optional: Number of orders to fetch per page (default is 100)
+)
+
+order_list = pd.DataFrame(order_list_response["order_list"])
+order_list["value"] = (order_list["filled_quantity"] * order_list["average_fill_price"]).astype(float)
+
+order_list = order_list.merge(
+    instruments_unique[["trading_symbol","name"]],
+    left_on="trading_symbol",
+    right_on="trading_symbol",
+    how="inner"
+)
+
+order_list = order_list.merge(
+    holdings[["isin","average_price"]],
+    left_on="isin",
+    right_on="isin",
+    how="left"
+)
+
+orders_for_insert = order_list[["name","trading_symbol", "isin", "transaction_type", "filled_quantity", "value", "exchange",  "groww_order_id","exchange_time","order_status", "average_price" ]]
+con.register("orders_for_insert", orders_for_insert).execute("INSERT INTO groww_orders SELECT * FROM orders_for_insert")
+
+## Send holdings list to Telegram
 
 # Step 1: Get holdings from Groww
 holdings_response = groww.get_holdings_for_user(timeout=5)
@@ -353,6 +380,23 @@ holdings["Stock Name"] = holdings["Stock Name"].str.split().str[:2].str.join(" "
 # Further restrict to first word if length > 20
 holdings["Stock Name"] = holdings["Stock Name"].apply(lambda x: x.split()[0] if len(x) > 15 else x)
 
+# Set up list to send to telegram for the full list of holdings
+holdings_list = holdings[
+    ["Stock Name", "current_value", "overall_gain", "day_gain", "day_change_perc", "pnl_percent"]
+].sort_values(by="day_change_perc")
+
+# Format numeric columns
+holdings_list["current_value"] = holdings_list["current_value"].astype(int)
+holdings_list["day_gain"] = holdings_list["day_gain"].astype(int)
+holdings_list["overall_gain"] = holdings_list["overall_gain"].astype(int)
+holdings_list["day_change_perc"] = holdings_list["day_change_perc"].round(2)
+holdings_list["pnl_percent"] = holdings_list["pnl_percent"].round(2)
+
+send_dataframe_via_telegram(holdings_list, BOT_TOKEN, CHAT_ID, "Holdings")
+
+
+## Send sell list to Telegram
+
 # Select specific columns and filter rows where Trend is False
 sell_list = holdings.loc[
     holdings["Trend"] == False,
@@ -366,19 +410,8 @@ sell_list["pnl_percent"] = sell_list["pnl_percent"].round(2)
 
 send_dataframe_via_telegram(sell_list, BOT_TOKEN, CHAT_ID, "Sell")
 
-# Set up list to send to telegram for the full list of holdings
-holdings_list = holdings[
-    ["Stock Name", "current_value", "overall_gain", "day_gain", "day_change_perc", "pnl_percent"]
-].sort_values(by="Stock Name")
 
-# Format numeric columns
-holdings_list["current_value"] = holdings_list["current_value"].astype(int)
-holdings_list["day_gain"] = holdings_list["day_gain"].astype(int)
-holdings_list["overall_gain"] = holdings_list["overall_gain"].astype(int)
-holdings_list["day_change_perc"] = holdings_list["day_change_perc"].round(2)
-holdings_list["pnl_percent"] = holdings_list["pnl_percent"].round(2)
-
-send_dataframe_via_telegram(holdings_list, BOT_TOKEN, CHAT_ID, "Holdings")
+## Send portfolio summary to Telegram
 
 # Total portfolio value and gains
 total_value = holdings["current_value"].sum()
@@ -390,36 +423,45 @@ percentage_day_change = (total_day_change / (total_value - total_day_change)) * 
 percentage_overall_change = (total_gain / (total_value - total_gain)) * 100
 
 # Fetch index quotes
-indices = {
-    "NIFTY": "NIFTY",
-    "NIFTYMIDCAP": "NIFTYMIDCAP",
-    "SMALLCAP250": "MOSMALL250",
-    "NIFTY500": "MONIFTY500"
-}
+indices = pd.DataFrame([
+    {"Index": "NIFTY",       "Symbol": "NIFTY",       "Starting Value": 23165.70},
+    {"Index": "NIFTYMIDCAP", "Symbol": "NIFTYMIDCAP", "Starting Value": 51554.15},
+    {"Index": "SMALLCAP250", "Symbol": "MOSMALL250",  "Starting Value": 15.06},
+    {"Index": "NIFTY500",    "Symbol": "MONIFTY500",  "Starting Value": 21.40}
+])
 
-index_changes = {}
+indices["current_quote"] = indices["Symbol"].map(lambda sym: groww.get_quote(exchange="NSE", segment=groww.SEGMENT_CASH, trading_symbol=sym)["last_price"] if sym else None)
+indices["percentage_day_change"] = indices["Symbol"].map(lambda sym: groww.get_quote(exchange="NSE", segment=groww.SEGMENT_CASH, trading_symbol=sym)["day_change_perc"] if sym else None)
+# Calculate total percentage index increase
+indices["percentage_index_increase"] = ((indices["current_quote"] - indices["Starting Value"]) / indices["Starting Value"]) * 100
 
-for name, symbol in indices.items():
-    quote = groww.get_quote(
-        exchange=groww.EXCHANGE_NSE,
-        segment=groww.SEGMENT_CASH,
-        trading_symbol=symbol
-    )
-    day_change_perc = quote.get("day_change_perc", 0)  # already in %
-    index_changes[name] = day_change_perc
+groww_orders = con.sql("select * from groww_orders").df()
+sell_orders = groww_orders[groww_orders['Type'] == 'SELL'].copy()
+sell_orders['RealizedGain'] = sell_orders['Value'] - (sell_orders['Quantity'] * sell_orders['AvgBuyPrice'])
+total_realized_gain = sell_orders['RealizedGain'].sum()
+total_gain_sum = total_gain + total_realized_gain
+percentage_total_return = (total_gain_sum / (total_value - total_gain_sum)) * 100
+
+# Prepare index performance summary with both daily and total increase
+index_performance_summary = (
+    f"▪️ NIFTY: {indices.loc[indices['Index']=='NIFTY', 'percentage_day_change'].values[0]:+.2f}% (Total: {indices.loc[indices['Index']=='NIFTY', 'percentage_index_increase'].values[0]:+.2f}%)\n"
+    f"▪️ NIFTY MIDCAP: {indices.loc[indices['Index']=='NIFTYMIDCAP', 'percentage_day_change'].values[0]:+.2f}% (Total: {indices.loc[indices['Index']=='NIFTYMIDCAP', 'percentage_index_increase'].values[0]:+.2f}%)\n"
+    f"▪️ NIFTY SMALLCAP 250: {indices.loc[indices['Index']=='SMALLCAP250', 'percentage_day_change'].values[0]:+.2f}% (Total: {indices.loc[indices['Index']=='SMALLCAP250', 'percentage_index_increase'].values[0]:+.2f}%)\n"
+    f"▪️ NIFTY 500: {indices.loc[indices['Index']=='NIFTY500', 'percentage_day_change'].values[0]:+.2f}% (Total: {indices.loc[indices['Index']=='NIFTY500', 'percentage_index_increase'].values[0]:+.2f}%)"
+)
 
 # Integrate into Telegram message
 message = (
     f"📊 *Portfolio Summary*\n"
-    f"💰 Total Value: ₹{total_value:,.2f}\n"
+    f"💰 Total Value: ₹{total_value:,.0f}\n"
     f"📈 Day Change: ₹{int(total_day_change):+,} ({percentage_day_change:+.2f}%)\n"
     f"🏦 Overall Gain: ₹{int(total_gain):+,} ({percentage_overall_change:+.2f}%)\n\n"
     f"📌 *Index Performance*\n"
-    f"▪️ NIFTY: {index_changes['NIFTY']:+.2f}%\n"
-    f"▪️ NIFTY MIDCAP: {index_changes['NIFTYMIDCAP']:+.2f}%\n"
-    f"▪️ NIFTY SMALLCAP 250: {index_changes['SMALLCAP250']:+.2f}%\n"
-    f"▪️ NIFTY 500: {index_changes['NIFTY500']:+.2f}%"
+    f"{index_performance_summary}"
+    f"\n\n💸 *Realized Gain*: ₹{total_realized_gain:,.2f}"
+    f"\n🧮 *Total Gain (Unrealized + Realized)*: ₹{total_gain_sum:,.2f} ({percentage_total_return:+.2f}%)"
 )
+
 
 url = f'https://api.telegram.org/bot{BOT_TOKEN}/sendMessage'
 payload = {
@@ -430,29 +472,3 @@ payload = {
 response = requests.post(url, data=payload)
 print(response.json())
 
-## Add daily orders to order records
-
-order_list_response = groww.get_order_list( # get order list of both CASH and FNO segments.
-    page = 0, # Optional: Page number for paginated results
-    page_size = 100 # Optional: Number of orders to fetch per page (default is 100)
-)
-
-order_list = pd.DataFrame(order_list_response["order_list"])
-order_list["value"] = (order_list["filled_quantity"] * order_list["average_fill_price"]).astype(float)
-
-order_list = order_list.merge(
-    instruments_unique[["trading_symbol","name"]],
-    left_on="trading_symbol",
-    right_on="trading_symbol",
-    how="inner"
-)
-
-order_list = order_list.merge(
-    holdings[["isin","average_price"]],
-    left_on="isin",
-    right_on="isin",
-    how="left"
-)
-
-orders_for_insert = order_list[["name","trading_symbol", "isin", "transaction_type", "filled_quantity", "value", "exchange",  "groww_order_id","exchange_time","order_status", "average_price" ]]
-con.register("orders_for_insert", orders_for_insert).execute("INSERT INTO groww_orders SELECT * FROM orders_for_insert")
